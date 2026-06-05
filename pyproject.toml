@@ -6,11 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "body-field"
 version = "0.1.0"
 description = "Common surface-field interface for robot body quantities."
-readme = "docs/backend-interface-design.md"
+readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 dependencies = [
-    "mathrobo>=0.0.3",
+    "mathrobo>=0.0.4",
     "meshcat>=0.3.2",
     "numpy>=2.0",
     "robokots",
