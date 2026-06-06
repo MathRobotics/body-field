@@ -8,6 +8,17 @@ Common surface-field interface for evaluating quantities on robot body points.
 - `SurfacePoint`: query points on links, in local/link/world coordinates
 - `Backend`: an evaluator for quantities such as position, velocity, or obstacle distance
 
+## Features
+
+- Point kinematics are implemented in both NumPy and Taichi backends.
+- The NumPy / Taichi point-field backends evaluate world position, velocity,
+  acceleration, and speed for many body points from link states.
+- The obstacle-distance backend evaluates signed distances and closest points to
+  simple obstacles. It can also return the vector field from the closest obstacle
+  surface point to each body point.
+- The RoboKots backends provide either a generic method adapter or direct
+  integration with RoboKots `Kots`.
+
 Example scripts live in [`examples/`](examples/README.md).
 
 ## Setup
@@ -93,8 +104,8 @@ velocity_values = field.at(point).velocity()
 
 ## Obstacle Distance
 
-Obstacle distance backends evaluate signed distances and closest points in the
-world frame.
+Obstacle distance backends evaluate signed distances, closest points, and
+obstacle-to-point vectors in the world frame.
 
 ```python
 from body_field import SphereObstacle
@@ -108,7 +119,9 @@ field.register_backend(
 )
 
 distance = field.at(SurfacePoint("link", (0.5, 0.0, 0.0), "link")).obstacle_distance()
+vector = field.at(SurfacePoint("link", (0.5, 0.0, 0.0), "link")).obstacle_vector()
 print(distance[0].value)
+print(vector[0].value)
 print(distance[0].metadata["closest_obstacle"])
 print(distance[0].metadata["closest_point"])
 ```
@@ -134,6 +147,7 @@ Obstacle-distance backend:
 
 - `geometry.obstacle.distance`
 - `geometry.obstacle.closest_point`
+- `geometry.obstacle.vector`
 
 RoboKots `KotsBackend`:
 

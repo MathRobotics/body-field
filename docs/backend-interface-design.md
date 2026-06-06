@@ -356,13 +356,20 @@ values = field.evaluate(
             output_type="scalar",
             frame="world",
             unit="m",
-        )
+        ),
+        QuantitySpec(
+            "geometry.obstacle.vector",
+            output_type="vector3",
+            frame="world",
+            unit="m",
+        ),
     ],
     state=state,
 )
 ```
 
 `geometry.obstacle.distance` は最も近い障害物表面までの符号付き距離を返す。
+`geometry.obstacle.vector` は最も近い障害物表面上の点からbody pointへのworld frame位置ベクトルを返す。
 値が正なら障害物の外側、0なら接触、負なら障害物内部にある。
 各 `QuantityValue.metadata` には `world_position`, `closest_obstacle`, `closest_point` が入る。
 

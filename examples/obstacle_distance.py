@@ -38,14 +38,26 @@ def main() -> None:
                 output_type="scalar",
                 frame="world",
                 unit="m",
-            )
+            ),
+            QuantitySpec(
+                "geometry.obstacle.vector",
+                output_type="vector3",
+                frame="world",
+                unit="m",
+            ),
         ],
         backend="obstacle_distance.numpy",
     )
 
-    closest = min(values, key=lambda value: float(value.value))
+    distance_values = [value for value in values if value.spec.name == "geometry.obstacle.distance"]
+    vector_by_point = {
+        value.point: value for value in values if value.spec.name == "geometry.obstacle.vector"
+    }
+    closest = min(distance_values, key=lambda value: float(value.value))
+    closest_vector = vector_by_point[closest.point]
     print(f"points: {len(points)}")
     print(f"minimum_signed_distance_m: {float(closest.value):.6f}")
+    print(f"obstacle_to_point_vector_m: {closest_vector.value}")
     print(f"point_link: {closest.point.link_name}")
     print(f"world_position: {closest.metadata['world_position']}")
     print(f"closest_obstacle: {closest.metadata['closest_obstacle']}")

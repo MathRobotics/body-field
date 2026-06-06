@@ -95,12 +95,14 @@ def test_obstacle_distance_backend_evaluates_axis_aligned_box_distance():
         [
             QuantitySpec("geometry.obstacle.distance", output_type="scalar", frame="world"),
             QuantitySpec("geometry.obstacle.closest_point", output_type="vector3", frame="world"),
+            QuantitySpec("geometry.obstacle.vector", output_type="vector3", frame="world"),
         ],
         backend="obstacle_distance.numpy",
     )
 
     assert values[0].value == pytest.approx(0.5)
     assert values[1].value == pytest.approx((1.5, 2.5, 3.0))
+    assert values[2].value == pytest.approx((-0.5, 0.0, 0.0))
 
 
 def test_obstacle_distance_is_signed_inside_obstacle():
@@ -128,3 +130,18 @@ def test_obstacle_distance_query_helper():
 
     assert len(values) == 1
     assert math.isclose(values[0].value, 0.75)
+
+
+def test_obstacle_vector_query_helper():
+    field = BodyField(sample_model())
+    field.register_backend(
+        NumpyObstacleDistanceBackend(
+            StaticLinkStateProvider(),
+            [SphereObstacle("sphere", center=(1.0, 2.5, 4.0), radius=0.25)],
+        )
+    )
+
+    values = field.at(SurfacePoint("link", (1.0, 2.5, 3.0), "world")).obstacle_vector()
+
+    assert len(values) == 1
+    assert values[0].value == pytest.approx((0.0, 0.0, -0.75))

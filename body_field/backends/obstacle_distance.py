@@ -23,6 +23,7 @@ from body_field.obstacles import DistanceObstacle
 SUPPORTED_OBSTACLE_DISTANCE_QUANTITIES = {
     "geometry.obstacle.distance",
     "geometry.obstacle.closest_point",
+    "geometry.obstacle.vector",
 }
 
 
@@ -154,6 +155,9 @@ def _collect_values(
                 unit = quantity.unit or "m"
             elif quantity.name == "geometry.obstacle.closest_point":
                 value = _tuple3(outputs.closest_point[index])
+                unit = quantity.unit or "m"
+            elif quantity.name == "geometry.obstacle.vector":
+                value = _tuple3(outputs.world_position[index] - outputs.closest_point[index])
                 unit = quantity.unit or "m"
             else:
                 raise ValueError(f"{backend_name} does not support {quantity.name}")

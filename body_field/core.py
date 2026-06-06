@@ -304,6 +304,14 @@ class SurfaceFieldQuery:
             unit="m",
         )
 
+    def obstacle_vector(self, frame: str = "world") -> list[QuantityValue]:
+        return self.quantity(
+            "geometry.obstacle.vector",
+            output_type="vector3",
+            frame=frame,
+            unit="m",
+        )
+
 
 def _backend_supports_axis(backend: Backend, axis: ParallelAxis) -> bool:
     profile_method = getattr(backend, "parallel_profile", None)
