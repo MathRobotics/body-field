@@ -50,17 +50,15 @@ uv run python examples/realtime_point_field_meshcat.py --duration 10
 
 ## Realtime Obstacle Distance
 
-Animate obstacle clearances in Meshcat:
+Animate obstacle clearances in Meshcat. The scene shows colored clearance
+points, closest-obstacle lines, and obstacle-to-body-point vectors by default:
 
 ```bash
 uv run python examples/realtime_obstacle_distance_meshcat.py
 ```
 
-Show closest-obstacle line segments:
-
-```bash
-uv run python examples/realtime_obstacle_distance_meshcat.py --show-closest-lines
-```
+Tune drawing density and scale in `VisualizationConfig` at the top of
+`examples/realtime_obstacle_distance_meshcat.py`.
 
 ## RoboKots Adapter Demo
 
