@@ -60,28 +60,6 @@ uv run python examples/realtime_obstacle_distance_meshcat.py
 Tune drawing density and scale in `VisualizationConfig` at the top of
 `examples/realtime_obstacle_distance_meshcat.py`.
 
-## RoboKots Adapter Demo
-
-Run the generic adapter demo with the built-in fake RoboKots object:
-
-```bash
-uv run python examples/robokots_surface_quantities.py
-```
-
-## RoboKots Kots Demo
-
-Run against a local RoboKots checkout:
-
-```bash
-ROBOKOTS_ROOT=/path/to/RoboKots uv run python examples/robokots_kots_surface_quantities.py
-```
-
-If `ROBOKOTS_ROOT` is not set, the example uses:
-
-```text
-/Users/a896/Documents/MathRobotics/RoboKots
-```
-
 ## Meshcat Notes
 
 Meshcat examples print a `Meshcat URL` when they start. Use `--no-open` if you

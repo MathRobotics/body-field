@@ -312,6 +312,14 @@ class SurfaceFieldQuery:
             unit="m",
         )
 
+    def jacobian(self, frame: str = "world") -> list[QuantityValue]:
+        return self.quantity(
+            "kinematics.jacobian",
+            output_type="matrix",
+            frame=frame,
+            unit="m/rad",
+        )
+
 
 def _backend_supports_axis(backend: Backend, axis: ParallelAxis) -> bool:
     profile_method = getattr(backend, "parallel_profile", None)

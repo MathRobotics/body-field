@@ -22,12 +22,9 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from body_field import (
-    Backend,
     BodyField,
     LinkSurface,
     LinkState,
-    ParallelProfile,
-    PreparedBackend,
     QuantitySpec,
     QuantityValue,
     RobotState,
@@ -36,7 +33,11 @@ from body_field import (
     SurfacePoint,
     Vector3,
 )
-from body_field.backends import NumpyPointFieldBackend, TaichiPointFieldBackend
+from body_field.backends import (
+    NumpyPointFieldBackend,
+    NumpyPointJacobianBackend,
+    TaichiPointFieldBackend,
+)
 from body_field.visualization import LinkTransform, MeshcatVisualizer, make_transform
 
 
@@ -115,79 +116,15 @@ class MovingPlanarLinkStateProvider:
 
         return link_states
 
-
-@dataclass(frozen=True)
-class PlanarManipulabilityBackend(Backend):
-    link_state_provider: MovingPlanarLinkStateProvider
-    name: str = "demo.manipulability"
-
-    def supported_quantities(self) -> set[str]:
-        return {"kinematics.manipulability.axes"}
-
-    def supports(self, model: RobotSurfaceModel, quantity: QuantitySpec) -> bool:
-        return quantity.name in self.supported_quantities()
-
-    def prepare(self, model: RobotSurfaceModel) -> PreparedBackend:
-        return PreparedPlanarManipulabilityBackend(model, self.link_state_provider, self.name)
-
-    def parallel_profile(self) -> ParallelProfile:
-        return ParallelProfile(
-            point_parallel=True,
-            quantity_parallel=False,
-            device="cpu",
-            backend_kind="demo-manipulability",
-            preferred_min_points=1,
-        )
-
-
-@dataclass(frozen=True)
-class PreparedPlanarManipulabilityBackend:
-    model: RobotSurfaceModel
-    link_state_provider: MovingPlanarLinkStateProvider
-    backend_name: str
-
-    def evaluate(
+    def compute_point_jacobians(
         self,
+        model: RobotSurfaceModel,
         points: list[SurfacePoint],
-        quantities: list[QuantitySpec],
         state: RobotState | None = None,
-    ) -> list[QuantityValue]:
-        for quantity in quantities:
-            if quantity.name != "kinematics.manipulability.axes":
-                raise ValueError(f"{self.backend_name} does not support {quantity.name}")
-            if quantity.frame not in {None, "world"}:
-                raise ValueError(f"{quantity.name} supports frame='world' only")
-
-        link_states = self.link_state_provider.compute_link_states(self.model, state)
-        link_order = {
-            motion.link_name: index for index, motion in enumerate(self.link_state_provider.motions)
-        }
-
-        values: list[QuantityValue] = []
-        for quantity in quantities:
-            for point in points:
-                self.model.require_link(point.link_name)
-                position = _surface_point_world_position(point, link_states[point.link_name])
-                axes = _manipulability_axes(
-                    point.link_name,
-                    position,
-                    link_states,
-                    link_order,
-                )
-                values.append(
-                    QuantityValue(
-                        spec=quantity,
-                        point=point,
-                        value=axes,
-                        frame=quantity.frame or "world",
-                        metadata={
-                            "backend": self.backend_name,
-                            "world_position": position,
-                            "meaning": "columns are sqrt(eigenvalue) * eigenvector of J J^T",
-                        },
-                    )
-                )
-        return values
+    ) -> list[np.ndarray]:
+        link_states = self.compute_link_states(model, state)
+        link_order = {motion.link_name: index for index, motion in enumerate(self.motions)}
+        return [_point_jacobian(model, point, link_states, link_order) for point in points]
 
 
 def main() -> None:
@@ -238,7 +175,7 @@ def main() -> None:
         field.register_backend(NumpyPointFieldBackend(provider))
     else:
         field.register_backend(TaichiPointFieldBackend(provider))
-    field.register_backend(PlanarManipulabilityBackend(provider))
+    field.register_backend(NumpyPointJacobianBackend(provider))
 
     points = _sample_points(provider.motions, args.geometry)
     quantities = [
@@ -284,7 +221,7 @@ def main() -> None:
                 points[:: args.ellipsoid_stride],
                 [manipulability_quantity],
                 state=state,
-                backend="demo.manipulability",
+                backend="jacobian.numpy",
             )
 
             _update_robot(meshcat, model, provider, state, args.geometry)
@@ -329,32 +266,25 @@ def _surface_point_world_position(point: SurfacePoint, link_state: LinkState) ->
     return _add(link_state.position, _matvec(link_state.rotation, point.position))
 
 
-def _manipulability_axes(
-    point_link_name: str,
-    point_world: Vector3,
+def _point_jacobian(
+    model: RobotSurfaceModel,
+    point: SurfacePoint,
     link_states: dict[str, LinkState],
     link_order: dict[str, int],
-) -> tuple[Vector3, Vector3, Vector3]:
-    point_link_index = link_order[point_link_name]
+) -> np.ndarray:
+    model.require_link(point.link_name)
+    point_world = _surface_point_world_position(point, link_states[point.link_name])
+    point_link_index = link_order[point.link_name]
     jacobian = np.zeros((3, len(link_order)), dtype=float)
-    point = np.asarray(point_world, dtype=float)
+    point_array = np.asarray(point_world, dtype=float)
     z_axis = np.array([0.0, 0.0, 1.0], dtype=float)
 
     for link_name, joint_index in sorted(link_order.items(), key=lambda item: item[1]):
         if joint_index > point_link_index:
             continue
         joint_origin = np.asarray(link_states[link_name].position, dtype=float)
-        jacobian[:, joint_index] = np.cross(z_axis, point - joint_origin)
-
-    manipulability = jacobian @ jacobian.T
-    eigenvalues, eigenvectors = np.linalg.eigh(manipulability)
-    order = np.argsort(eigenvalues)[::-1]
-    axes = []
-    for index in order:
-        length = math.sqrt(max(float(eigenvalues[index]), 0.0))
-        axis = eigenvectors[:, index] * length
-        axes.append((float(axis[0]), float(axis[1]), float(axis[2])))
-    return (axes[0], axes[1], axes[2])
+        jacobian[:, joint_index] = np.cross(z_axis, point_array - joint_origin)
+    return jacobian
 
 
 def _demo_link_motions() -> list[LinkMotion]:

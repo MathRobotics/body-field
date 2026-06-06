@@ -10,10 +10,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 dependencies = [
-    "mathrobo>=0.0.4",
     "meshcat>=0.3.2",
     "numpy>=2.0",
-    "robokots",
     "taichi>=1.7.0",
 ]
 
@@ -25,6 +23,3 @@ include = ["body_field*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-
-[tool.uv.sources]
-robokots = { git = "https://github.com/MathRobotics/RoboKots" }

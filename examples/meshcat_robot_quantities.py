@@ -3,9 +3,7 @@
 Run:
     python examples/meshcat_robot_quantities.py
 
-The example uses a small built-in two-link robot so it works without RoboKots.
-To connect this to RoboKots, build a BodyField with KotsBackend and pass the
-resulting QuantityValue objects to MeshcatVisualizer in the same way.
+The example uses a small built-in two-link robot.
 """
 
 from __future__ import annotations

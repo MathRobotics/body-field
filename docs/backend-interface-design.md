@@ -462,6 +462,7 @@ geometry.curvature
 kinematics.velocity
 kinematics.acceleration
 kinematics.jacobian
+kinematics.manipulability.axes
 
 dynamics.mass_matrix
 dynamics.point_inertia
@@ -515,55 +516,25 @@ class SurfaceProjector(Protocol):
 
 この段階で、共通interfaceが「表面上の任意点に問い合わせる」という中核ユースケースを満たせるか検証する。
 
-## RoboKots Backend
+## Jacobian Backend
 
-最初の実装として `body_field.backends.KotsBackend` を用意する。
+`kinematics.jacobian` は、robot kinematics provider が各 `SurfacePoint` に対して返す点ヤコビ行列を
+`QuantityValue` として包む。標準実装の `NumpyPointJacobianBackend` は `PointJacobianProvider` から
+1点につき1つの `3 x dof` 行列を受け取る。
 
 ```python
-from body_field import BodyField, QuantitySpec, RobotState, SurfacePoint
-from body_field.backends import KotsBackend, robot_surface_model_from_kots
-from robokots.kots import Kots
-
-kots = Kots.from_json_file("sample_robot.json", order=3)
-
-field = BodyField(robot_surface_model_from_kots(kots))
-field.register_backend(KotsBackend(kots))
-
-point = SurfacePoint(
-    link_name="arm3",
-    position=(0.1, 0.0, 0.0),
-    frame="arm3",
-)
-
-state = RobotState(
-    q=[0.0] * kots.dof(),
-    dq=[0.0] * kots.dof(),
-    ddq=[0.0] * kots.dof(),
-)
+field.register_backend(NumpyPointJacobianBackend(jacobian_provider))
 
 values = field.evaluate(
-    [point],
-    [
-        QuantitySpec("geometry.position", output_type="vector3", frame="world", unit="m"),
-        QuantitySpec("kinematics.velocity", output_type="vector3", frame="world", unit="m/s"),
-        QuantitySpec("kinematics.acceleration", output_type="vector3", frame="world", unit="m/s^2"),
-        QuantitySpec("dynamics.force", output_type="wrench", frame="world"),
-    ],
-    state,
-    backend="robokots.kots",
+    points,
+    [QuantitySpec("kinematics.jacobian", output_type="matrix", frame="world", unit="m/rad")],
+    state=state,
+    backend="jacobian.numpy",
 )
 ```
 
-`KotsBackend` は RoboKots の link state を使う。
-
-```text
-geometry.position       -> world-frame link pose + local point offset
-kinematics.velocity     -> world-frame link twist + omega x offset
-kinematics.acceleration -> world-frame link acceleration + alpha x offset + omega x omega x offset
-dynamics.force          -> StateType("link", link_name, "force")
-```
-
-現時点では、`SurfacePoint.position` は link frame または world frame の座標として扱う。URDF mesh上の `triangle_id + barycentric` から点を作る処理は次の段階で追加する。
+同じ backend は `kinematics.manipulability.axes` も返せる。これは `J J^T` の固有値・固有ベクトルから、
+可視化用の3本の軸ベクトルを作る。
 
 ## Meshcat Visualization
 
@@ -613,12 +584,16 @@ python examples/meshcat_robot_quantities.py --zmq-url tcp://127.0.0.1:6000
 
 ```text
 LinkStateProvider
-  RoboKots / Pinocchio / Drake / MuJoCo / demo backend
+  NumPy / Taichi / Pinocchio / Drake / MuJoCo / demo backend
   linkごとの world pose, twist, acceleration を計算
 
 PointFieldBackend
   NumPy / Taichi
   SurfacePointごとの position, velocity, acceleration, speed を計算
+
+PointJacobianBackend
+  NumPy
+  SurfacePointごとの 3 x dof point Jacobian を返す
 ```
 
 共通のリンク状態:

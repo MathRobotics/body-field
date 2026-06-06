@@ -13,11 +13,11 @@ Common surface-field interface for evaluating quantities on robot body points.
 - Point kinematics are implemented in both NumPy and Taichi backends.
 - The NumPy / Taichi point-field backends evaluate world position, velocity,
   acceleration, and speed for many body points from link states.
+- The Jacobian backend evaluates point Jacobians and manipulability axes from a
+  provider that supplies one Jacobian per body point.
 - The obstacle-distance backend evaluates signed distances and closest points to
   simple obstacles. It can also return the vector field from the closest obstacle
   surface point to each body point.
-- The RoboKots backends provide either a generic method adapter or direct
-  integration with RoboKots `Kots`.
 
 Example scripts live in [`examples/`](examples/README.md).
 
@@ -130,9 +130,8 @@ print(distance[0].metadata["closest_point"])
 
 - `NumpyPointFieldBackend`: CPU point-field quantities
 - `TaichiPointFieldBackend`: Taichi point-field quantities
+- `NumpyPointJacobianBackend`: point Jacobians and manipulability axes
 - `NumpyObstacleDistanceBackend`: signed distances to simple obstacles
-- `RoboKotsBackend`: adapter for user-supplied RoboKots-style methods
-- `KotsBackend`: direct integration with RoboKots `Kots`
 
 ## Supported Built-In Quantities
 
@@ -143,25 +142,15 @@ Point-field backends:
 - `kinematics.acceleration`
 - `kinematics.speed`
 
+Jacobian backend:
+
+- `kinematics.jacobian`
+- `kinematics.manipulability.axes`
+
 Obstacle-distance backend:
 
 - `geometry.obstacle.distance`
 - `geometry.obstacle.closest_point`
 - `geometry.obstacle.vector`
-
-RoboKots `KotsBackend`:
-
-- `robokots.link.frame`
-- `robokots.link.position`
-- `robokots.link.rotation`
-- `robokots.link.velocity`
-- `robokots.link.acceleration`
-- `robokots.link.jacobian`
-- `geometry.position`
-- `kinematics.velocity`
-- `kinematics.acceleration`
-- `kinematics.jacobian`
-- `dynamics.momentum`
-- `dynamics.force`
 
 For backend design details, see [`docs/backend-interface-design.md`](docs/backend-interface-design.md).
