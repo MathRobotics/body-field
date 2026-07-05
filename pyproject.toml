@@ -10,13 +10,21 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 dependencies = [
-    "meshcat>=0.3.2",
     "numpy>=2.0",
-    "taichi>=1.7.0",
 ]
 
 [project.optional-dependencies]
+taichi = ["taichi>=1.7.0"]
+viz = ["meshcat>=0.3.2"]
 test = ["pytest>=8"]
+dev = [
+    "meshcat>=0.3.2",
+    "pytest>=8",
+    "taichi>=1.7.0",
+]
+viser = [
+    "viser>=1.0.30",
+]
 
 [tool.setuptools.packages.find]
 include = ["body_field*"]

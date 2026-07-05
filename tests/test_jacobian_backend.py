@@ -69,3 +69,16 @@ def test_jacobian_backend_evaluates_manipulability_axes():
 
     axis_lengths = [np.linalg.norm(axis) for axis in values[0].value]
     assert axis_lengths == pytest.approx([1.0, 1.0, 0.0])
+
+
+def test_jacobian_query_helpers():
+    field = BodyField(sample_model())
+    field.register_backend(NumpyPointJacobianBackend(FakePointJacobianProvider()))
+    query = field.at(SurfacePoint("link", (0.5, 0.0, 0.0), "link"))
+
+    np.testing.assert_allclose(
+        query.jacobian()[0].value,
+        ((0.0, -1.0), (1.0, 0.0), (0.0, 0.0)),
+    )
+    axis_lengths = [np.linalg.norm(axis) for axis in query.manipulability_axes()[0].value]
+    assert axis_lengths == pytest.approx([1.0, 1.0, 0.0])

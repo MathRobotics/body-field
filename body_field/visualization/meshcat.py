@@ -202,8 +202,8 @@ class MeshcatVisualizer:
     ) -> None:
         import meshcat.geometry as g
 
+        self.vis[path].delete()
         material = g.MeshLambertMaterial(color=color)
-        count = 0
         for count, (origin_value, vector_value) in enumerate(zip(origins, vectors, strict=True)):
             origin = _value_as_vector3(origin_value)
             vector = _value_as_vector3(vector_value)
@@ -215,12 +215,9 @@ class MeshcatVisualizer:
             length = _distance(origin, end)
             vector_path = f"{path}/{count}"
             if length <= 1e-12:
-                self.vis[vector_path].delete()
                 continue
             self.vis[vector_path].set_object(g.Cylinder(1.0, 1.0), material)
             self.vis[vector_path].set_transform(_scaled_cylinder_transform(origin, end, radius))
-
-        self.vis[f"{path}/{count + 1}"].delete()
 
     def draw_tensor_axes(
         self,
@@ -278,8 +275,8 @@ class MeshcatVisualizer:
     ) -> None:
         import meshcat.geometry as g
 
+        self.vis[path].delete()
         material = g.MeshLambertMaterial(color=color, transparent=True, opacity=opacity)
-        count = 0
         for count, (origin_value, tensor_value) in enumerate(zip(origins, tensors, strict=True)):
             axes = _value_as_tensor_axes(tensor_value)
             radii, transform = _ellipsoid_radii_and_transform(
@@ -291,8 +288,6 @@ class MeshcatVisualizer:
             ellipsoid_path = f"{path}/{count}"
             self.vis[ellipsoid_path].set_object(g.Ellipsoid(np.asarray(radii, dtype=float)), material)
             self.vis[ellipsoid_path].set_transform(transform)
-
-        self.vis[f"{path}/{count + 1}"].delete()
 
     def draw_line_segments(
         self,

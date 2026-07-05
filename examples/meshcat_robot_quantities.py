@@ -9,7 +9,6 @@ The example uses a small built-in two-link robot.
 from __future__ import annotations
 
 import argparse
-import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,12 +24,22 @@ from body_field import (
     QuantityValue,
     RobotState,
     RobotSurfaceModel,
-    SurfaceMesh,
     SurfacePoint,
     Vector3,
 )
 from body_field.backends import NumpyPointFieldBackend, TaichiPointFieldBackend
 from body_field.visualization import LinkTransform, MeshcatVisualizer
+from examples._demo_geometry import (
+    add,
+    box_link_mesh,
+    cross,
+    joint_positions_world,
+    matvec,
+    rotz,
+    sample_box_surface_points,
+    sample_line_link_points,
+    sub,
+)
 
 
 @dataclass(frozen=True)
@@ -129,7 +138,7 @@ def main() -> None:
     if args.geometry == "line":
         line_segments = _line_segments_world(link_state_provider)
         meshcat.draw_cylinder_links(line_segments, radius=0.018)
-        meshcat.draw_joint_spheres(_joint_positions_world(line_segments), radius=0.035)
+        meshcat.draw_joint_spheres(joint_positions_world(line_segments), radius=0.035)
     else:
         meshcat.draw_surface_model(model, link_transforms=link_state_provider.link_transforms())
     if args.show_black_points:
@@ -170,7 +179,7 @@ def build_demo_robot() -> tuple[RobotSurfaceModel, DemoPlanarLinkStateProvider]:
     for link_name, length, theta, joint_omega in link_specs:
         cumulative_theta += theta
         cumulative_omega += joint_omega
-        rotation = _rotz(cumulative_theta)
+        rotation = rotz(cumulative_theta)
         poses[link_name] = LinkPose(
             LinkTransform(origin, rotation),
             cumulative_omega,
@@ -179,12 +188,12 @@ def build_demo_robot() -> tuple[RobotSurfaceModel, DemoPlanarLinkStateProvider]:
             width,
             height,
         )
-        links[link_name] = LinkSurface(link_name, _box_link_mesh(length, width, height))
+        links[link_name] = LinkSurface(link_name, box_link_mesh(length, width, height))
 
-        next_origin = _add(origin, _matvec(rotation, (length, 0.0, 0.0)))
-        origin_velocity = _add(
+        next_origin = add(origin, matvec(rotation, (length, 0.0, 0.0)))
+        origin_velocity = add(
             origin_velocity,
-            _cross((0.0, 0.0, cumulative_omega), _sub(next_origin, origin)),
+            cross((0.0, 0.0, cumulative_omega), sub(next_origin, origin)),
         )
         origin = next_origin
 
@@ -203,53 +212,22 @@ def sample_points(geometry: str = "line") -> list[SurfacePoint]:
         ("link3", 0.58, 0.12, 0.08),
     ]:
         if geometry == "line":
-            points.extend(_sample_line_link_points(link_name, length))
+            points.extend(sample_line_link_points(link_name, length, 180))
         elif geometry == "box":
-            points.extend(_sample_box_surface_points(link_name, length, width, height))
+            points.extend(
+                sample_box_surface_points(
+                    link_name,
+                    length,
+                    width,
+                    height,
+                    x_count=42,
+                    y_count=9,
+                    z_count=7,
+                )
+            )
         else:
             raise ValueError(f"Unknown geometry: {geometry}")
     return points
-
-
-def _sample_line_link_points(link_name: str, length: float) -> list[SurfacePoint]:
-    return [
-        SurfacePoint(link_name, (x, 0.0, 0.0), link_name)
-        for x in _linspace_midpoints(0.0, length, 180)
-    ]
-
-
-def _sample_box_surface_points(
-    link_name: str,
-    length: float,
-    width: float,
-    height: float,
-) -> list[SurfacePoint]:
-    points: list[SurfacePoint] = []
-    x_values = _linspace_midpoints(0.0, length, 42)
-    y_values = _linspace_midpoints(-width / 2.0, width / 2.0, 9)
-    z_values = _linspace_midpoints(-height / 2.0, height / 2.0, 7)
-
-    for x in x_values:
-        for y in y_values:
-            points.append(SurfacePoint(link_name, (x, y, -height / 2.0), link_name))
-            points.append(SurfacePoint(link_name, (x, y, height / 2.0), link_name))
-
-    for x in x_values:
-        for z in z_values:
-            points.append(SurfacePoint(link_name, (x, -width / 2.0, z), link_name))
-            points.append(SurfacePoint(link_name, (x, width / 2.0, z), link_name))
-
-    for y in y_values:
-        for z in z_values:
-            points.append(SurfacePoint(link_name, (0.0, y, z), link_name))
-            points.append(SurfacePoint(link_name, (length, y, z), link_name))
-
-    return points
-
-
-def _linspace_midpoints(start: float, stop: float, count: int) -> list[float]:
-    step = (stop - start) / count
-    return [start + step * (index + 0.5) for index in range(count)]
 
 
 def _filter(values: list[QuantityValue], name: str) -> list[QuantityValue]:
@@ -260,82 +238,9 @@ def _line_segments_world(provider: DemoPlanarLinkStateProvider) -> list[tuple[Ve
     segments: list[tuple[Vector3, Vector3]] = []
     for pose in provider.poses.values():
         start = pose.transform.position
-        end = _add(start, _matvec(pose.transform.rotation, (pose.length, 0.0, 0.0)))
+        end = add(start, matvec(pose.transform.rotation, (pose.length, 0.0, 0.0)))
         segments.append((start, end))
     return segments
-
-
-def _joint_positions_world(segments: list[tuple[Vector3, Vector3]]) -> list[Vector3]:
-    positions: list[Vector3] = []
-    for start, end in segments:
-        for position in [start, end]:
-            if not any(_norm(_sub(position, known)) < 1e-9 for known in positions):
-                positions.append(position)
-    return positions
-
-
-def _box_link_mesh(length: float, width: float, height: float) -> SurfaceMesh:
-    y = width / 2.0
-    z = height / 2.0
-    vertices = [
-        (0.0, -y, -z),
-        (length, -y, -z),
-        (length, y, -z),
-        (0.0, y, -z),
-        (0.0, -y, z),
-        (length, -y, z),
-        (length, y, z),
-        (0.0, y, z),
-    ]
-    faces = [
-        (0, 1, 2),
-        (0, 2, 3),
-        (4, 6, 5),
-        (4, 7, 6),
-        (0, 4, 5),
-        (0, 5, 1),
-        (1, 5, 6),
-        (1, 6, 2),
-        (2, 6, 7),
-        (2, 7, 3),
-        (3, 7, 4),
-        (3, 4, 0),
-    ]
-    return SurfaceMesh(vertices=vertices, faces=faces)
-
-
-def _rotz(theta: float) -> tuple[Vector3, Vector3, Vector3]:
-    c = math.cos(theta)
-    s = math.sin(theta)
-    return ((c, -s, 0.0), (s, c, 0.0), (0.0, 0.0, 1.0))
-
-
-def _matvec(matrix: tuple[Vector3, Vector3, Vector3], vector: Vector3) -> Vector3:
-    return (
-        matrix[0][0] * vector[0] + matrix[0][1] * vector[1] + matrix[0][2] * vector[2],
-        matrix[1][0] * vector[0] + matrix[1][1] * vector[1] + matrix[1][2] * vector[2],
-        matrix[2][0] * vector[0] + matrix[2][1] * vector[1] + matrix[2][2] * vector[2],
-    )
-
-
-def _add(left: Vector3, right: Vector3) -> Vector3:
-    return (left[0] + right[0], left[1] + right[1], left[2] + right[2])
-
-
-def _sub(left: Vector3, right: Vector3) -> Vector3:
-    return (left[0] - right[0], left[1] - right[1], left[2] - right[2])
-
-
-def _cross(left: Vector3, right: Vector3) -> Vector3:
-    return (
-        left[1] * right[2] - left[2] * right[1],
-        left[2] * right[0] - left[0] * right[2],
-        left[0] * right[1] - left[1] * right[0],
-    )
-
-
-def _norm(vector: Vector3) -> float:
-    return math.sqrt(vector[0] ** 2 + vector[1] ** 2 + vector[2] ** 2)
 
 
 if __name__ == "__main__":

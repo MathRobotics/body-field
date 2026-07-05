@@ -3,6 +3,8 @@ from typing import Literal
 
 import numpy as np
 
+from body_field.backends._surface_points import pack_surface_point_transforms
+from body_field.backends._taichi import import_taichi, init_taichi
 from body_field.core import (
     Backend,
     LinkState,
@@ -62,8 +64,8 @@ class TaichiPointFieldBackend(Backend):
         return quantity.name in self.supported_quantities()
 
     def prepare(self, model: RobotSurfaceModel) -> PreparedBackend:
-        taichi = _import_taichi()
-        _init_taichi(taichi, self.arch)
+        taichi = import_taichi()
+        init_taichi(taichi, self.arch)
         return PreparedTaichiPointFieldBackend(model, self.link_state_provider, self.name)
 
     def parallel_profile(self) -> ParallelProfile:
@@ -119,6 +121,8 @@ class _PackedPointFieldInputs:
     point_link_ids: np.ndarray
     point_local: np.ndarray
     point_is_world: np.ndarray
+    world_position: np.ndarray
+    link_offset: np.ndarray
     link_position: np.ndarray
     link_rotation: np.ndarray
     link_angular_velocity: np.ndarray
@@ -140,27 +144,20 @@ def _pack_inputs(
     points: list[SurfacePoint],
     link_states: dict[str, LinkState],
 ) -> _PackedPointFieldInputs:
-    link_names = list(model.links)
+    transform_arrays = pack_surface_point_transforms(model, points, link_states)
+    link_names = list(transform_arrays.link_names)
     link_ids = {name: index for index, name in enumerate(link_names)}
 
     missing = [name for name in link_names if name not in link_states]
     if missing:
         raise ValueError(f"Missing link states for: {', '.join(missing)}")
 
-    point_link_ids = np.empty(len(points), dtype=np.int32)
     point_local = np.empty((len(points), 3), dtype=np.float32)
     point_is_world = np.empty(len(points), dtype=np.int32)
 
     for index, point in enumerate(points):
-        model.require_link(point.link_name)
-        point_link_ids[index] = link_ids[point.link_name]
         point_local[index] = np.asarray(point.position, dtype=np.float32)
         point_is_world[index] = 1 if point.frame == "world" else 0
-        if point.frame not in {"world", point.link_name, "link", "local"}:
-            raise ValueError(
-                "Point-field backends expect point.frame to be 'world', the link name, "
-                f"'link', or 'local'; got {point.frame!r}"
-            )
 
     def link_array(attr: str, shape: tuple[int, ...]) -> np.ndarray:
         out = np.empty((len(link_names), *shape), dtype=np.float32)
@@ -169,9 +166,11 @@ def _pack_inputs(
         return out
 
     return _PackedPointFieldInputs(
-        point_link_ids=point_link_ids,
+        point_link_ids=transform_arrays.point_link_ids,
         point_local=point_local,
         point_is_world=point_is_world,
+        world_position=transform_arrays.world_position,
+        link_offset=transform_arrays.link_offset,
         link_position=link_array("position", (3,)),
         link_rotation=link_array("rotation", (3, 3)),
         link_angular_velocity=link_array("angular_velocity", (3,)),
@@ -183,15 +182,8 @@ def _pack_inputs(
 
 def _evaluate_numpy(arrays: _PackedPointFieldInputs) -> _PointFieldOutputs:
     link_ids = arrays.point_link_ids
-    link_pos = arrays.link_position[link_ids]
-    link_rot = arrays.link_rotation[link_ids]
-    point_local = arrays.point_local
-
-    local_offset = np.einsum("nij,nj->ni", link_rot, point_local)
-    world_offset = point_local - link_pos
-    is_world = arrays.point_is_world.astype(bool)[:, None]
-    offset = np.where(is_world, world_offset, local_offset)
-    position = link_pos + offset
+    position = arrays.world_position
+    offset = arrays.link_offset
 
     omega = arrays.link_angular_velocity[link_ids]
     linear_velocity = arrays.link_linear_velocity[link_ids]
@@ -209,7 +201,6 @@ def _evaluate_numpy(arrays: _PackedPointFieldInputs) -> _PointFieldOutputs:
 
 
 def _evaluate_taichi(arrays: _PackedPointFieldInputs) -> _PointFieldOutputs:
-    taichi = _import_taichi()
     n = arrays.point_link_ids.shape[0]
     position = np.empty((n, 3), dtype=np.float32)
     velocity = np.empty((n, 3), dtype=np.float32)
@@ -285,40 +276,8 @@ def _require_world_quantities(quantities: list[QuantitySpec]) -> None:
             raise ValueError(f"Unsupported point-field quantity: {quantity.name}")
 
 
-def _import_taichi():
-    try:
-        import taichi as ti
-    except ImportError as exc:
-        raise ImportError(
-            "TaichiPointFieldBackend requires taichi. Install it with `uv add taichi` "
-            "or use NumpyPointFieldBackend."
-        ) from exc
-    return ti
-
-
-def _init_taichi(ti, arch: str) -> None:
-    if getattr(ti, "_body_field_initialized", False):
-        return
-    arch_value = {
-        "auto": ti.gpu,
-        "gpu": ti.gpu,
-        "cpu": ti.cpu,
-        "metal": getattr(ti, "metal"),
-        "vulkan": getattr(ti, "vulkan"),
-        "cuda": getattr(ti, "cuda"),
-    }[arch]
-    try:
-        ti.init(arch=arch_value)
-    except Exception:
-        if arch in {"auto", "gpu"}:
-            ti.init(arch=ti.cpu)
-        else:
-            raise
-    ti._body_field_initialized = True
-
-
 def _taichi_eval_points(*args):
-    ti = _import_taichi()
+    ti = import_taichi()
 
     @ti.kernel
     def kernel(

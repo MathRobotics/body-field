@@ -18,14 +18,24 @@ Common surface-field interface for evaluating quantities on robot body points.
 - The obstacle-distance backend evaluates signed distances and closest points to
   simple obstacles. It can also return the vector field from the closest obstacle
   surface point to each body point.
+- Gaussian-process Euclidean distance fields approximate distances from sparse
+  surface samples and are useful for fast local distance queries.
+- The NumPy / Taichi self-collision backends evaluate nearest-neighbor distances
+  between sampled body points, excluding points on the same link by default.
 
 Example scripts live in [`examples/`](examples/README.md).
 
 ## Setup
 
 ```bash
-uv sync
+uv sync --extra test
 uv run pytest
+```
+
+Taichi backends and Meshcat examples are optional:
+
+```bash
+uv sync --extra test --extra taichi --extra viz
 ```
 
 ## Basic Usage
@@ -120,18 +130,74 @@ field.register_backend(
 
 distance = field.at(SurfacePoint("link", (0.5, 0.0, 0.0), "link")).obstacle_distance()
 vector = field.at(SurfacePoint("link", (0.5, 0.0, 0.0), "link")).obstacle_vector()
+normal = field.at(SurfacePoint("link", (0.5, 0.0, 0.0), "link")).obstacle_normal()
 print(distance[0].value)
 print(vector[0].value)
+print(normal[0].value)
 print(distance[0].metadata["closest_obstacle"])
 print(distance[0].metadata["closest_point"])
 ```
 
+## Gaussian Process Distance Field
+
+Use `GaussianProcessDistanceField` when you want a fast Euclidean distance
+approximation from sparse surface samples:
+
+```python
+from body_field import GaussianProcessDistanceField
+
+field = GaussianProcessDistanceField(surface_samples, a=400.0)
+result = field.query(query_points)
+print(result.distance)
+print(result.normal)
+print(result.nearest)
+```
+
+## Self Collision
+
+Self-collision distances are computed between the query body points you pass in.
+By default, points on the same link are ignored. Set `point_radius` to return a
+signed clearance between equal-radius point proxies.
+
+```python
+from body_field import evaluate_minimum_self_collision
+from body_field.backends import NumpySelfCollisionBackend
+
+field.register_backend(NumpySelfCollisionBackend(StaticLinkStateProvider(), point_radius=0.02))
+
+points = [
+    SurfacePoint("left_link", (0.0, 0.0, 0.0), "link"),
+    SurfacePoint("right_link", (0.03, 0.0, 0.0), "link"),
+]
+
+distance = field.at_points(points).self_collision_distance()
+vector = field.at_points(points).self_collision_vector()
+print(distance[0].value)
+print(vector[0].metadata["closest_link"])
+print(vector[0].metadata["closest_point_index"])
+
+minimum = evaluate_minimum_self_collision(field, points)
+print(minimum.signed_distance)
+print(minimum.point_index, minimum.closest_point_index)
+print(minimum.normal)
+```
+
+For fast joint-angle searches, minimize `minimum.signed_distance`. If a Jacobian
+backend is registered, pass `jacobian_backend="jacobian.numpy"` to also compute
+`minimum.distance_gradient`, approximated as `n.T @ (J_point - J_closest)`.
+Register `TaichiSelfCollisionBackend` and select `backend="self_collision.taichi"`
+in `field.evaluate(...)` to use the Taichi implementation directly.
+
 ## Available Backends
 
 - `NumpyPointFieldBackend`: CPU point-field quantities
-- `TaichiPointFieldBackend`: Taichi point-field quantities
+- `TaichiPointFieldBackend`: Taichi point-field quantities; requires the `taichi` extra
 - `NumpyPointJacobianBackend`: point Jacobians and manipulability axes
 - `NumpyObstacleDistanceBackend`: signed distances to simple obstacles
+- `GaussianProcessDistanceField`: approximate Euclidean distance queries from
+  sparse surface samples
+- `NumpySelfCollisionBackend`: nearest distances between sampled body points
+- `TaichiSelfCollisionBackend`: Taichi nearest distances between sampled body points; requires the `taichi` extra
 
 ## Supported Built-In Quantities
 
@@ -151,6 +217,13 @@ Obstacle-distance backend:
 
 - `geometry.obstacle.distance`
 - `geometry.obstacle.closest_point`
+- `geometry.obstacle.normal`
 - `geometry.obstacle.vector`
+
+Self-collision backend:
+
+- `geometry.self_collision.distance`
+- `geometry.self_collision.closest_point`
+- `geometry.self_collision.vector`
 
 For backend design details, see [`docs/backend-interface-design.md`](docs/backend-interface-design.md).

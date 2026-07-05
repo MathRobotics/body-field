@@ -49,8 +49,6 @@ class SurfacePoint:
     link_name: str
     position: Vector3
     frame: str
-    triangle_id: int | None = None
-    barycentric: tuple[float, float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -179,7 +177,7 @@ values = field.evaluate(
 
 ```python
 registry = BackendRegistry()
-registry.register(TrimeshBackend())
+registry.register(GeometryBackend())
 registry.register(PinocchioBackend())
 
 model = load_urdf_surface_model("robot.urdf", mesh_role="collision")
@@ -188,8 +186,6 @@ point = SurfacePoint(
     link_name="left_foot",
     position=(0.04, 0.01, 0.0),
     frame="left_foot",
-    triangle_id=120,
-    barycentric=(0.2, 0.3, 0.5),
 )
 
 normal = QuantitySpec(
@@ -309,7 +305,7 @@ class SurfaceFieldQuery:
 
 ```python
 field = BodyField.from_urdf("robot.urdf", mesh_role="collision")
-field.register_backend(TrimeshBackend())
+field.register_backend(GeometryBackend())
 field.register_backend(PinocchioBackend())
 
 point = field.project_to_surface(
@@ -403,18 +399,18 @@ flowchart LR
 
     Field --> Query[Surface Query]
     State[RobotState<br/>q, dq, ddq, time] --> Query
-    Point[SurfacePoint<br/>link + triangle + barycentric] --> Query
+    Point[SurfacePoint<br/>link + position + frame] --> Query
     Quantity[QuantitySpec<br/>geometry.normal<br/>kinematics.velocity<br/>contact.pressure] --> Query
 
     Query --> Registry[BackendRegistry]
     Registry --> Select{Select Backend}
 
-    Select --> Trimesh[TrimeshBackend<br/>geometry.*]
+    Select --> Geometry[GeometryBackend<br/>geometry.*]
     Select --> Pinocchio[PinocchioBackend<br/>kinematics.*<br/>dynamics.*]
     Select --> Mujoco[MuJoCoBackend<br/>contact.*<br/>simulation state]
     Select --> Custom[CustomBackend<br/>thermal / learned fields]
 
-    Trimesh --> Result[QuantityValue]
+    Geometry --> Result[QuantityValue]
     Pinocchio --> Result
     Mujoco --> Result
     Custom --> Result
@@ -479,13 +475,13 @@ custom.*
 
 ## Design Notes
 
-SurfacePointはworld座標だけで持たない。できる限り `link_name + triangle_id + barycentric` を保持する。
+SurfacePointはworld座標だけで持たない。基本は `link_name + position + frame` を保持する。
 
 理由:
 
 - 姿勢が変わっても同じ表面点を追跡できる
-- 最近傍探索の曖昧さを減らせる
-- 法線、接平面、面積重みなどの幾何量と相性がよい
+- link frame の点なら座標変換を backend 側で一貫して扱える
+- world frame の点も明示的に扱える
 
 ただしユーザー入力はworld座標でも受けたいので、coreに以下のような変換APIを置く。
 
@@ -510,7 +506,7 @@ class SurfaceProjector(Protocol):
 3. `QuantitySpec`
 4. `Backend`
 5. `BackendRegistry`
-6. `TrimeshBackend`
+6. `GeometryBackend`
 7. `geometry.normal`
 8. `geometry.nearest_point`
 

@@ -2,6 +2,9 @@
 
 Run examples from the repository root.
 
+Meshcat examples require the `viz` extra, and Taichi examples require the
+`taichi` extra.
+
 ## Obstacle Distance
 
 Compute signed distances from sampled robot body points to demo obstacles:
@@ -59,6 +62,16 @@ uv run python examples/realtime_obstacle_distance_meshcat.py
 
 Tune drawing density and scale in `VisualizationConfig` at the top of
 `examples/realtime_obstacle_distance_meshcat.py`.
+
+## Realtime GP Arm SDF
+
+Render a realtime per-link GP distance field for a simple serial capsule arm.
+Each link has its own GP distance field, and the robot field is evaluated as
+the minimum distance over links at each coarse grid point:
+
+```bash
+uv run --extra viser python examples/realtime_gp_arm_sdf.py
+```
 
 ## Meshcat Notes
 

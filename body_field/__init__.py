@@ -23,6 +23,11 @@ from .core import (
     default_backend_registry,
 )
 from .obstacles import AxisAlignedBoxObstacle, DistanceObstacle, SphereObstacle
+from .self_collision import SelfCollisionMinimum, evaluate_minimum_self_collision
+from .sdf import (
+    GaussianProcessDistanceField,
+    SDFQueryResult,
+)
 
 __all__ = [
     "AxisAlignedBoxObstacle",
@@ -31,6 +36,7 @@ __all__ = [
     "BodyField",
     "DeviceKind",
     "DistanceObstacle",
+    "GaussianProcessDistanceField",
     "LinkSurface",
     "LinkState",
     "LinkStateProvider",
@@ -42,10 +48,13 @@ __all__ = [
     "QuantityValue",
     "RobotState",
     "RobotSurfaceModel",
+    "SDFQueryResult",
+    "SelfCollisionMinimum",
     "SurfaceFieldQuery",
     "SurfaceMesh",
     "SurfacePoint",
     "SphereObstacle",
     "Vector3",
     "default_backend_registry",
+    "evaluate_minimum_self_collision",
 ]

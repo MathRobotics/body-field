@@ -77,6 +77,17 @@ def test_numpy_point_field_backend_evaluates_link_surface_values():
     assert values[3].value == pytest.approx(math.sqrt(9.0**2 + 20.0**2 + 30.0**2))
 
 
+def test_point_field_query_helpers():
+    field = BodyField(sample_model())
+    field.register_backend(NumpyPointFieldBackend(StaticLinkStateProvider()))
+    query = field.at(SurfacePoint("link", (0.5, 0.0, 0.0), "link"))
+
+    assert query.position()[0].value == pytest.approx((1.0, 2.5, 3.0))
+    assert query.velocity()[0].value == pytest.approx((9.0, 20.0, 30.0))
+    assert query.acceleration()[0].value == pytest.approx((98.5, 198.0, 300.0))
+    assert query.speed()[0].value == pytest.approx(math.sqrt(9.0**2 + 20.0**2 + 30.0**2))
+
+
 @pytest.mark.skipif(importlib.util.find_spec("taichi") is None, reason="taichi is not installed")
 def test_taichi_point_field_backend_matches_numpy():
     numpy_values = evaluate_with(NumpyPointFieldBackend(StaticLinkStateProvider()))
@@ -87,4 +98,3 @@ def test_taichi_point_field_backend_matches_numpy():
     ]
     for taichi_value, numpy_value in zip(taichi_values, numpy_values, strict=True):
         assert taichi_value.value == pytest.approx(numpy_value.value, rel=1e-5, abs=1e-5)
-

@@ -7,7 +7,6 @@ import numpy as np
 
 from body_field.core import (
     Backend,
-    LinkState,
     LinkStateProvider,
     ParallelProfile,
     PreparedBackend,
@@ -17,12 +16,14 @@ from body_field.core import (
     RobotSurfaceModel,
     SurfacePoint,
 )
+from body_field.backends._surface_points import pack_surface_point_transforms
 from body_field.obstacles import DistanceObstacle
 
 
 SUPPORTED_OBSTACLE_DISTANCE_QUANTITIES = {
     "geometry.obstacle.distance",
     "geometry.obstacle.closest_point",
+    "geometry.obstacle.normal",
     "geometry.obstacle.vector",
 }
 
@@ -72,7 +73,9 @@ class PreparedNumpyObstacleDistanceBackend:
     ) -> list[QuantityValue]:
         _require_supported_quantities(quantities)
         link_states = self.link_state_provider.compute_link_states(self.model, state)
-        positions = _world_positions(self.model, points, link_states)
+        positions = pack_surface_point_transforms(
+            self.model, points, link_states
+        ).world_position
         outputs = _evaluate_obstacle_distances(positions, self.obstacles)
         return _collect_values(points, quantities, outputs, self.backend_name)
 
@@ -82,35 +85,8 @@ class _ObstacleDistanceOutputs:
     world_position: np.ndarray
     signed_distance: np.ndarray
     closest_point: np.ndarray
+    normal: np.ndarray
     closest_obstacle_name: list[str | None]
-
-
-def _world_positions(
-    model: RobotSurfaceModel,
-    points: list[SurfacePoint],
-    link_states: dict[str, LinkState],
-) -> np.ndarray:
-    positions = np.empty((len(points), 3), dtype=np.float32)
-    for index, point in enumerate(points):
-        model.require_link(point.link_name)
-        if point.link_name not in link_states:
-            raise ValueError(f"Missing link state for: {point.link_name}")
-
-        point_position = np.asarray(point.position, dtype=np.float32)
-        if point.frame == "world":
-            positions[index] = point_position
-            continue
-        if point.frame not in {point.link_name, "link", "local"}:
-            raise ValueError(
-                "Obstacle-distance backend expects point.frame to be 'world', "
-                f"the link name, 'link', or 'local'; got {point.frame!r}"
-            )
-
-        link_state = link_states[point.link_name]
-        link_position = np.asarray(link_state.position, dtype=np.float32)
-        link_rotation = np.asarray(link_state.rotation, dtype=np.float32)
-        positions[index] = link_position + link_rotation @ point_position
-    return positions
 
 
 def _evaluate_obstacle_distances(
@@ -120,16 +96,17 @@ def _evaluate_obstacle_distances(
     point_count = positions.shape[0]
     best_distance = np.full(point_count, np.inf, dtype=np.float32)
     best_closest_point = np.full((point_count, 3), np.nan, dtype=np.float32)
+    best_normal = np.full((point_count, 3), np.nan, dtype=np.float32)
     best_obstacle_name: list[str | None] = [None] * point_count
 
     for obstacle in obstacles:
-        distances = obstacle.signed_distances(positions).astype(np.float32, copy=False)
-        closest_points = obstacle.closest_points(positions).astype(np.float32, copy=False)
+        distances, closest_points, normals = _query_obstacle(obstacle, positions)
         update = distances < best_distance
         if not np.any(update):
             continue
         best_distance[update] = distances[update]
         best_closest_point[update] = closest_points[update]
+        best_normal[update] = normals[update]
         for index in np.nonzero(update)[0]:
             best_obstacle_name[int(index)] = obstacle.name
 
@@ -137,6 +114,7 @@ def _evaluate_obstacle_distances(
         world_position=positions,
         signed_distance=best_distance,
         closest_point=best_closest_point,
+        normal=best_normal,
         closest_obstacle_name=best_obstacle_name,
     )
 
@@ -156,6 +134,9 @@ def _collect_values(
             elif quantity.name == "geometry.obstacle.closest_point":
                 value = _tuple3(outputs.closest_point[index])
                 unit = quantity.unit or "m"
+            elif quantity.name == "geometry.obstacle.normal":
+                value = _tuple3(outputs.normal[index])
+                unit = quantity.unit
             elif quantity.name == "geometry.obstacle.vector":
                 value = _tuple3(outputs.world_position[index] - outputs.closest_point[index])
                 unit = quantity.unit or "m"
@@ -174,6 +155,7 @@ def _collect_values(
                         "world_position": _tuple3(outputs.world_position[index]),
                         "closest_obstacle": outputs.closest_obstacle_name[index],
                         "closest_point": _tuple3(outputs.closest_point[index]),
+                        "normal": _tuple3(outputs.normal[index]),
                     },
                 )
             )
@@ -190,3 +172,40 @@ def _require_supported_quantities(quantities: list[QuantitySpec]) -> None:
 
 def _tuple3(array: np.ndarray) -> tuple[float, float, float]:
     return (float(array[0]), float(array[1]), float(array[2]))
+
+
+def _query_obstacle(
+    obstacle: DistanceObstacle,
+    positions: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    query = getattr(obstacle, "query", None)
+    if callable(query):
+        result = query(positions)
+        distances = np.asarray(result.distance, dtype=np.float32)
+        closest_points = np.asarray(result.nearest, dtype=np.float32)
+        normals = np.asarray(result.normal, dtype=np.float32)
+        return distances, closest_points, normals
+
+    distances = obstacle.signed_distances(positions).astype(np.float32, copy=False)
+    closest_points = obstacle.closest_points(positions).astype(np.float32, copy=False)
+    normals_method = getattr(obstacle, "normals", None)
+    if callable(normals_method):
+        normals = np.asarray(normals_method(positions), dtype=np.float32)
+    else:
+        normals = _derive_normals(positions, closest_points, distances)
+    return distances, closest_points, normals
+
+
+def _derive_normals(
+    positions: np.ndarray,
+    closest_points: np.ndarray,
+    distances: np.ndarray,
+) -> np.ndarray:
+    offsets = positions - closest_points
+    lengths = np.linalg.norm(offsets, axis=1)
+    normals = np.zeros_like(positions, dtype=np.float32)
+    nonzero = lengths > 1.0e-8
+    normals[nonzero] = offsets[nonzero] / lengths[nonzero, None]
+    signs = np.where(distances < 0.0, -1.0, 1.0).astype(np.float32)
+    normals[nonzero] *= signs[nonzero, None]
+    return normals

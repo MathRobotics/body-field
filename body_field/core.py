@@ -45,8 +45,6 @@ class SurfacePoint:
     link_name: str
     position: Vector3
     frame: str
-    triangle_id: int | None = None
-    barycentric: tuple[float, float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -288,10 +286,34 @@ class SurfaceFieldQuery:
     def normal(self, frame: str = "world") -> list[QuantityValue]:
         return self.quantity("geometry.normal", output_type="vector3", frame=frame)
 
+    def position(self, frame: str = "world") -> list[QuantityValue]:
+        return self.quantity(
+            "geometry.position",
+            output_type="vector3",
+            frame=frame,
+            unit="m",
+        )
+
     def velocity(self, frame: str = "world") -> list[QuantityValue]:
         return self.quantity(
             "kinematics.velocity",
             output_type="vector3",
+            frame=frame,
+            unit="m/s",
+        )
+
+    def acceleration(self, frame: str = "world") -> list[QuantityValue]:
+        return self.quantity(
+            "kinematics.acceleration",
+            output_type="vector3",
+            frame=frame,
+            unit="m/s^2",
+        )
+
+    def speed(self, frame: str = "world") -> list[QuantityValue]:
+        return self.quantity(
+            "kinematics.speed",
+            output_type="scalar",
             frame=frame,
             unit="m/s",
         )
@@ -312,10 +334,58 @@ class SurfaceFieldQuery:
             unit="m",
         )
 
+    def obstacle_normal(self, frame: str = "world") -> list[QuantityValue]:
+        return self.quantity(
+            "geometry.obstacle.normal",
+            output_type="vector3",
+            frame=frame,
+        )
+
+    def self_collision_distance(
+        self, frame: str = "world", **params: Any
+    ) -> list[QuantityValue]:
+        return self.quantity(
+            "geometry.self_collision.distance",
+            output_type="scalar",
+            frame=frame,
+            unit="m",
+            **params,
+        )
+
+    def self_collision_closest_point(
+        self, frame: str = "world", **params: Any
+    ) -> list[QuantityValue]:
+        return self.quantity(
+            "geometry.self_collision.closest_point",
+            output_type="vector3",
+            frame=frame,
+            unit="m",
+            **params,
+        )
+
+    def self_collision_vector(
+        self, frame: str = "world", **params: Any
+    ) -> list[QuantityValue]:
+        return self.quantity(
+            "geometry.self_collision.vector",
+            output_type="vector3",
+            frame=frame,
+            unit="m",
+            **params,
+        )
+
     def jacobian(self, frame: str = "world") -> list[QuantityValue]:
         return self.quantity(
             "kinematics.jacobian",
             output_type="matrix",
+            frame=frame,
+            unit="m/rad",
+        )
+
+    def manipulability_axes(self, frame: str = "world") -> list[QuantityValue]:
+        return self.quantity(
+            "kinematics.manipulability.axes",
+            output_type="tensor3",
             frame=frame,
             unit="m/rad",
         )
